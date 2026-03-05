@@ -199,11 +199,11 @@ stages:
                 & $az login `
                     --service-principal `
                     --tenant   "b8ef0560-c771-44b0-90ea-1a4ec345ef5a" `
-                    --username "$(AZ_CLIENT_ID)" `
-                    "--password=$(AZ_CLIENT_SECRET)"
+                    --username "$(CLIENT_ID)" `
+                    "--password=$(CLIENT_SECRET)"
 
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Error "az login failed. Check AZ_CLIENT_ID and AZ_CLIENT_SECRET in the PortalDeployment variable group."
+                    Write-Error "az login failed. Check CLIENT_ID and CLIENT_SECRET in the PortalDeployment variable group."
                     exit 1
                 }
 
