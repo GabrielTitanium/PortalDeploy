@@ -3,11 +3,11 @@ trigger: none
 resources:
   pipelines:
     - pipeline: BuildPipeline
-      source: 'DVOP_PatientPortal'
+      source: 'PortalBuild'
       trigger:
         branches:
           include:
-            - '104.112'
+            - 'main'
 
 variables:
   - group: Keylocker
@@ -51,15 +51,15 @@ stages:
           # produces a "PipelineArtifact" type. DownloadBuildArtifacts@0 cannot
           # handle this type ("Unsupported artifact type: PipelineArtifact").
           # DownloadPipelineArtifact@2 must be used instead.
-          # Definition ID 453 = DVOP_PatientPortal (resolved from pipeline logs).
+          # Definition ID 465 = DVOP_PatientPortal (resolved from pipeline logs).
           - task: DownloadPipelineArtifact@2
             displayName: 'Download drop artifact from DVOP_PatientPortal'
             inputs:
               buildType: 'specific'
               project: 'Titanium'
-              definition: '453'
+              definition: '465'
               buildVersionToDownload: 'latestFromBranch'
-              branchName: 'refs/heads/104.112'
+              branchName: 'refs/heads/main'
               artifactName: 'drop'
               targetPath: '$(Pipeline.Workspace)\drop'
 
