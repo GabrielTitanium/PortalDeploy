@@ -1,0 +1,119 @@
+trigger: none
+
+# ──────────────────────────────────────────────
+# Trigger this pipeline whenever the Build pipeline
+# completes successfully on any branch.
+# ──────────────────────────────────────────────
+resources:
+  pipelines:
+    - pipeline: BuildPipeline          # Alias used to reference the artifact below
+      source: 'PortalBuild'   # ← Replace with the exact name of your build pipeline in Azure DevOps
+      trigger:
+        branches:
+          include:
+            - '*'
+
+variables:
+  - group: Keylocker
+  - group: SVNCredentials
+  - group: TestTrunkVariables
+  - group: Azure Connection
+
+  - name: ARTIFACT_NAME
+    value: drop
+  - name: ZIP_FILE_NAME
+    value: SaludPortal.zip
+  - name: UNZIP_DESTINATION
+    value: '$(Pipeline.Workspace)\SaludPortal'
+
+pool:
+  name: Default
+  demands:
+    - msbuild
+    - Cmd
+
+stages:
+
+  # ────────────────────────────────────────────
+  # Stage 1 – Download & Unzip
+  # ────────────────────────────────────────────
+  - stage: UnzipArtifact
+    displayName: 'Download & Unzip SaludPortal Artifact'
+    isSkippable: false
+    jobs:
+      - job: UnzipJob
+        displayName: 'Download artifact and unzip SaludPortal.zip'
+        timeoutInMinutes: 60
+        cancelTimeoutInMinutes: 1
+        workspace:
+          clean: all
+
+        steps:
+
+          # ── 1. Download the published pipeline artifact ──────────────────
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download drop artifact from Build pipeline'
+            inputs:
+              buildType: specific              # Pull from a specific pipeline run
+              project: '$(System.TeamProjectId)'
+              definition: '$(resources.pipeline.BuildPipeline.pipelineID)'
+              buildVersionToDownload: latestFromBranch
+              branchName: '$(Build.SourceBranch)'
+              artifactName: '$(ARTIFACT_NAME)'
+              targetPath: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)'
+
+          # ── 2. Confirm the zip is present before extraction ──────────────
+          - task: PowerShell@2
+            displayName: 'Verify SaludPortal.zip exists'
+            inputs:
+              targetType: inline
+              script: |
+                $zip = "$(Pipeline.Workspace)\$(ARTIFACT_NAME)\$(ZIP_FILE_NAME)"
+                if (-not (Test-Path $zip)) {
+                    Write-Error "❌  $(ZIP_FILE_NAME) was NOT found at: $zip"
+                    exit 1
+                }
+                Write-Host "✅  $(ZIP_FILE_NAME) found at: $zip"
+                $size = (Get-Item $zip).Length / 1MB
+                Write-Host "    Size: $([math]::Round($size, 2)) MB"
+
+          # ── 3. Clean destination folder ──────────────────────────────────
+          - task: PowerShell@2
+            displayName: 'Clean unzip destination folder'
+            inputs:
+              targetType: inline
+              script: |
+                $dest = "$(UNZIP_DESTINATION)"
+                if (Test-Path $dest) {
+                    Write-Host "Removing existing folder: $dest"
+                    Remove-Item $dest -Recurse -Force
+                }
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                Write-Host "✅  Destination folder ready: $dest"
+
+          # ── 4. Extract the zip ───────────────────────────────────────────
+          - task: ExtractFiles@1
+            displayName: 'Unzip SaludPortal.zip'
+            inputs:
+              archiveFilePatterns: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)\$(ZIP_FILE_NAME)'
+              destinationFolder: '$(UNZIP_DESTINATION)'
+              cleanDestinationFolder: false   # Already cleaned in the previous step
+
+          # ── 5. Sanity-check the extracted contents ───────────────────────
+          - task: PowerShell@2
+            displayName: 'List extracted contents'
+            inputs:
+              targetType: inline
+              script: |
+                $dest = "$(UNZIP_DESTINATION)"
+                Write-Host "📂  Extracted contents of $dest :"
+                Get-ChildItem -Path $dest -Recurse | Select-Object FullName | Format-Table -AutoSize
+
+          # ── 6. (Optional) Re-publish extracted files as a new artifact ───
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish extracted SaludPortal as artifact'
+            inputs:
+              targetPath: '$(UNZIP_DESTINATION)'
+              artifact: 'SaludPortal-extracted'
+              publishLocation: 'pipeline'
+            continueOnError: true
