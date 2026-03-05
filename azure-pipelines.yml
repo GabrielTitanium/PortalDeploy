@@ -198,12 +198,12 @@ stages:
                 Write-Host "Logging in..."
                 & $az login `
                     --service-principal `
-                    --tenant   "b8ef0560-c771-44b0-90ea-1a4ec345ef5a" `
-                    --username "$(CLIENT_ID)" `
-                    "--password=$(CLIENT_SECRET)"
+                    --tenant   "26219bd8-7fd9-4860-bf47-ed0ce0a65a2f" `
+                    --username "$(AZ_CLIENT_ID)" `
+                    "--password=$(AZ_CLIENT_SECRET)"
 
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Error "az login failed. Check CLIENT_ID and CLIENT_SECRET in the PortalDeployment variable group."
+                    Write-Error "az login failed. Check AZ_CLIENT_ID and AZ_CLIENT_SECRET in the PortalDeployment variable group."
                     exit 1
                 }
 
