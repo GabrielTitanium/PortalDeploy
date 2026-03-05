@@ -153,13 +153,28 @@ stages:
                     Invoke-WebRequest -Uri 'https://aka.ms/installazurecliwindows' -OutFile $installer
                     Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
                     Remove-Item $installer -Force
-
-                    # Reload PATH so az is available in subsequent steps
-                    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-
                     Write-Host "Azure CLI installed successfully."
-                    az --version
                 }
+
+                # Always write the az path to a pipeline variable so the deploy step can use it
+                $candidates = @(
+                    'C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin\az.cmd',
+                    'C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd'
+                )
+                $azPath = $null
+                foreach ($c in $candidates) {
+                    if (Test-Path $c) { $azPath = $c; break }
+                }
+                if (-not $azPath) {
+                    $found = Get-Command az -ErrorAction SilentlyContinue
+                    if ($found) { $azPath = $found.Source }
+                }
+                if (-not $azPath) {
+                    Write-Error "az CLI could not be located after install."
+                    exit 1
+                }
+                Write-Host "az located at: $azPath"
+                Write-Host "##vso[task.setvariable variable=AZ_PATH]$azPath"
 
           # ── Re-publish extracted files as a new artifact ──────────────
           #- task: PublishPipelineArtifact@1
@@ -171,27 +186,32 @@ stages:
            # continueOnError: true
           
         # ── 8. Deploy to Azure Web App ───────────────────────────────────
-          - task: AzureCLI@2
+          - task: PowerShell@2
             displayName: 'Deploy SaludPortal to Azure Web App'
             inputs:
-              azureSubscription: 'Visual Studio Enterprise Subscription – MPN (terraform) (1d0c3e4e-0a66-4799-b950-6b4eeee4684b)'
-              scriptType: 'ps'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                Write-Host "Logging in to tenant: $(AZ_TENANT)"
-                az login --tenant $(AZ_TENANT)
+              targetType: inline
+              script: |
+                $az = "$(AZ_PATH)"
+                Write-Host "Using az at: $az"
 
-                Write-Host "Setting subscription: $(AZ_SUBSCRIPTION)"
-                az account set --subscription $(AZ_SUBSCRIPTION)
+                Write-Host "Logging in..."
+                & $az login `
+                    --service-principal `
+                    --tenant   "$(AZ_TENANT)" `
+                    --username "$(CLIENT_ID)" `
+                    --password "$(CLIENT_SECRET)"
 
-                Write-Host "Deploying $(REPACK_ZIP) to $(AZ_WEBAPP_NAME)..."
-                az webapp deployment source config-zip `
-                  --resource-group $(AZ_RESOURCE_GROUP) `
-                  --name           $(AZ_WEBAPP_NAME) `
-                  --src            "$(REPACK_ZIP)"
+                Write-Host "Setting subscription..."
+                & $az account set --subscription "$(AZ_SUBSCRIPTION)"
+
+                Write-Host "Deploying to $(AZ_WEBAPP_NAME)..."
+                & $az webapp deployment source config-zip `
+                    --resource-group "$(AZ_RESOURCE_GROUP)" `
+                    --name           "$(AZ_WEBAPP_NAME)" `
+                    --src            "$(REPACK_ZIP)"
 
                 Write-Host ""
                 Write-Host "DEPLOYMENT COMPLETE"
                 Write-Host "  Resource Group : $(AZ_RESOURCE_GROUP)"
                 Write-Host "  Web App        : $(AZ_WEBAPP_NAME)"
-                Write-Host "  Package        : $(REPACK_ZIP)"  
+                Write-Host "  Package        : $(REPACK_ZIP)" 
