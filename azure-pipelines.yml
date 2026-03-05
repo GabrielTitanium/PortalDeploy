@@ -11,7 +11,7 @@ resources:
       trigger:
         branches:
           include:
-            - '104.112'
+            - '*'
 
 variables:
   - group: Keylocker
