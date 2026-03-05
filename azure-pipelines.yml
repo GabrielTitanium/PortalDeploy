@@ -148,7 +148,7 @@ stages:
           - task: AzureCLI@2
             displayName: 'Deploy SaludPortal to Azure Web App'
             inputs:
-              azureSubscription: '$(AZ_SUBSCRIPTION)'
+              azureSubscription: 'QA terraform environments'
               scriptType: 'ps'
               scriptLocation: 'inlineScript'
               inlineScript: |
