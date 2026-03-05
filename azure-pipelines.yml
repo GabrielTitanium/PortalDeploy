@@ -7,11 +7,11 @@ trigger: none
 resources:
   pipelines:
     - pipeline: BuildPipeline          # Alias used to reference the artifact below
-      source: 'PortalBuild'   # ← Replace with the exact name of your build pipeline in Azure DevOps
+      source: 'DVOP_PatientPortal'   # ← Replace with the exact name of your build pipeline in Azure DevOps
       trigger:
         branches:
           include:
-            - '*'
+            - '104.112'
 
 variables:
   - group: Keylocker
