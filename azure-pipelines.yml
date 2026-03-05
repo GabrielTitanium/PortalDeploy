@@ -115,11 +115,56 @@ stages:
               filePath: '$(Build.SourcesDirectory)/scripts/Patch-WebConfig.ps1'
               arguments: '-TargetFolder "$(UNZIP_DESTINATION)"'
 
-          # ── Re-publish extracted files as a new artifact ──────────────
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish extracted SaludPortal as artifact'
+          - task: PowerShell@2
+            displayName: 'Re-zip patched SaludPortal'
             inputs:
-              targetPath: '$(UNZIP_DESTINATION)'
-              artifact: 'SaludPortal-extracted'
-              publishLocation: 'pipeline'
-            continueOnError: true
+              targetType: inline
+              script: |
+                $src  = "$(UNZIP_DESTINATION)"
+                $dest = "$(REPACK_ZIP)"
+
+                if (Test-Path $dest) {
+                    Remove-Item $dest -Force
+                }
+
+                Add-Type -AssemblyName System.IO.Compression.FileSystem
+                [System.IO.Compression.ZipFile]::CreateFromDirectory($src, $dest)
+
+                $size = (Get-Item $dest).Length / 1MB
+                Write-Host "Re-zipped to: $dest"
+                Write-Host "Size: $([math]::Round($size, 2)) MB"
+
+          # ── Re-publish extracted files as a new artifact ──────────────
+          #- task: PublishPipelineArtifact@1
+           # displayName: 'Publish extracted SaludPortal as artifact'
+            #inputs:
+              #targetPath: '$(UNZIP_DESTINATION)'
+             # artifact: 'SaludPortal-extracted'
+             # publishLocation: 'pipeline'
+           # continueOnError: true
+          
+        # ── 8. Deploy to Azure Web App ───────────────────────────────────
+          - task: AzureCLI@2
+            displayName: 'Deploy SaludPortal to Azure Web App'
+            inputs:
+              azureSubscription: '$(AZ_SUBSCRIPTION)'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                Write-Host "Logging in to tenant: $(AZ_TENANT)"
+                az login --tenant $(AZ_TENANT)
+
+                Write-Host "Setting subscription: $(AZ_SUBSCRIPTION)"
+                az account set --subscription $(AZ_SUBSCRIPTION)
+
+                Write-Host "Deploying $(REPACK_ZIP) to $(AZ_WEBAPP_NAME)..."
+                az webapp deployment source config-zip `
+                  --resource-group $(AZ_RESOURCE_GROUP) `
+                  --name           $(AZ_WEBAPP_NAME) `
+                  --src            "$(REPACK_ZIP)"
+
+                Write-Host ""
+                Write-Host "DEPLOYMENT COMPLETE"
+                Write-Host "  Resource Group : $(AZ_RESOURCE_GROUP)"
+                Write-Host "  Web App        : $(AZ_WEBAPP_NAME)"
+                Write-Host "  Package        : $(REPACK_ZIP)"  
