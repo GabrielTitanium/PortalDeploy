@@ -148,7 +148,7 @@ stages:
           - task: AzureCLI@2
             displayName: 'Deploy SaludPortal to Azure Web App'
             inputs:
-              azureSubscription: 'QA terraform environments'
+              azureSubscription: 'Visual Studio Enterprise Subscription – MPN (terraform) (1d0c3e4e-0a66-4799-b950-6b4eeee4684b)'
               scriptType: 'ps'
               scriptLocation: 'inlineScript'
               inlineScript: |
