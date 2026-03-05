@@ -68,12 +68,12 @@ stages:
               script: |
                 $zip = "$(Pipeline.Workspace)\drop\$(ZIP_FILE_NAME)"
                 if (-not (Test-Path $zip)) {
-                    Write-Error "❌  $(ZIP_FILE_NAME) was NOT found at: $zip"
+                    Write-Error "$(ZIP_FILE_NAME) was NOT found at: $zip"
                     Write-Host "Contents of drop folder:"
                     Get-ChildItem "$(Pipeline.Workspace)\drop" -Recurse | Select-Object FullName
                     exit 1
                 }
-                Write-Host "✅  $(ZIP_FILE_NAME) found at: $zip"
+                Write-Host "$(ZIP_FILE_NAME) found at: $zip"
                 $size = (Get-Item $zip).Length / 1MB
                 Write-Host "    Size: $([math]::Round($size, 2)) MB"
 
@@ -89,7 +89,7 @@ stages:
                     Remove-Item $dest -Recurse -Force
                 }
                 New-Item -ItemType Directory -Path $dest -Force | Out-Null
-                Write-Host "✅  Destination folder ready: $dest"
+                Write-Host "Destination folder ready: $dest"
 
           # ── 4. Extract the zip ───────────────────────────────────────────
           - task: ExtractFiles@1
@@ -106,10 +106,95 @@ stages:
               targetType: inline
               script: |
                 $dest = "$(UNZIP_DESTINATION)"
-                Write-Host "📂  Extracted contents of $dest :"
+                Write-Host "Extracted contents of $dest :"
                 Get-ChildItem -Path $dest -Recurse | Select-Object FullName | Format-Table -AutoSize
+          
+          - task: PowerShell@2
+            displayName: 'Patch Web.config customHeaders URLs'
+            inputs:
+              targetType: inline
+              script: |
+                $dest        = "$(UNZIP_DESTINATION)"
+                $oldUrls     = @(
+                    'https://titanium-salud-cork-qa.saludts.com/',
+                    'https://sdt-cork-qa.saludts.com/'
+                )
+                $newUrl      = 'https://rcsi-cfg.environments.titanium.solutions/'
+                $totalFiles  = 0
+                $totalChanges = 0
 
-          # ── 6. Re-publish extracted files as a new artifact ──────────────
+                # Find all Web.config files (case-insensitive)
+                $configs = Get-ChildItem -Path $dest -Filter 'Web.config' -Recurse -ErrorAction SilentlyContinue
+
+                if ($configs.Count -eq 0) {
+                    Write-Warning "⚠️  No Web.config files found under $dest"
+                    exit 0
+                }
+
+                foreach ($file in $configs) {
+                    Write-Host "──────────────────────────────────────────"
+                    Write-Host "🔍  Processing: $($file.FullName)"
+
+                    [xml]$xml = Get-Content $file.FullName -Raw
+                    $ns = $xml.configuration.'system.webServer'.httpProtocol.customHeaders
+
+                    if ($null -eq $ns) {
+                        Write-Host "    ℹ️  No httpProtocol/customHeaders section found — skipping."
+                        continue
+                    }
+
+                    $fileChanged = 0
+
+                    # Work on raw text so we preserve formatting and catch all attribute values
+                    $content = Get-Content $file.FullName -Raw
+                    $originalContent = $content
+
+                    foreach ($old in $oldUrls) {
+                        $occurrences = ([regex]::Matches($content, [regex]::Escape($old))).Count
+                        if ($occurrences -gt 0) {
+                            Write-Host "    🔄  Found $occurrences occurrence(s) of: $old"
+                            Write-Host "        → Replacing with: $newUrl"
+                            $content = $content -replace [regex]::Escape($old), $newUrl
+                            $fileChanged += $occurrences
+                        } else {
+                            Write-Host "    ✔️  URL not present (nothing to replace): $old"
+                        }
+                    }
+
+                    if ($fileChanged -gt 0) {
+                        Set-Content -Path $file.FullName -Value $content -NoNewline
+                        Write-Host "    💾  Saved $fileChanged replacement(s) to: $($file.FullName)"
+                        $totalFiles++
+                        $totalChanges += $fileChanged
+                    } else {
+                        Write-Host "    ℹ️  No matching URLs found in customHeaders — file unchanged."
+                    }
+                }
+
+                Write-Host ""
+                Write-Host "══════════════════════════════════════════"
+                Write-Host "✅  PATCH COMPLETE"
+                Write-Host "    Web.config files modified : $totalFiles"
+                Write-Host "    Total URL replacements    : $totalChanges"
+                Write-Host "    Old URLs replaced         : $($oldUrls -join ', ')"
+                Write-Host "    New URL applied           : $newUrl"
+                Write-Host "══════════════════════════════════════════"
+
+                # ── Verification: print the patched customHeaders block ──
+                Write-Host ""
+                Write-Host "📋  POST-PATCH VERIFICATION — customHeaders contents:"
+                foreach ($file in $configs) {
+                    $patched = Get-Content $file.FullName -Raw
+                    # Extract and print just the customHeaders block for a clean log
+                    $match = [regex]::Match($patched, '(?s)<customHeaders>.*?</customHeaders>')
+                    if ($match.Success) {
+                        Write-Host ""
+                        Write-Host "  File: $($file.FullName)"
+                        Write-Host $match.Value
+                    }
+                }
+
+          # ── Re-publish extracted files as a new artifact ──────────────
           - task: PublishPipelineArtifact@1
             displayName: 'Publish extracted SaludPortal as artifact'
             inputs:
