@@ -22,6 +22,8 @@ variables:
     value: SaludPortal.zip
   - name: UNZIP_DESTINATION
     value: '$(Pipeline.Workspace)\SaludPortal'
+  - name: REPACK_ZIP
+    value: '$(Pipeline.Workspace)\SaludPortal.zip'
 
 pool:
   name: Default
