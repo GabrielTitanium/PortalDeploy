@@ -114,82 +114,67 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $dest        = "$(UNZIP_DESTINATION)"
-                $oldUrls     = @(
+                $dest         = "$(UNZIP_DESTINATION)"
+                $oldUrls      = @(
                     'https://titanium-salud-cork-qa.saludts.com/',
                     'https://sdt-cork-qa.saludts.com/'
                 )
-                $newUrl      = 'https://rcsi-cfg.environments.titanium.solutions/'
-                $totalFiles  = 0
+                $newUrl       = 'https://rcsi-cfg.environments.titanium.solutions/'
+                $totalFiles   = 0
                 $totalChanges = 0
 
-                # Find all Web.config files (case-insensitive)
                 $configs = Get-ChildItem -Path $dest -Filter 'Web.config' -Recurse -ErrorAction SilentlyContinue
 
                 if ($configs.Count -eq 0) {
-                    Write-Warning "⚠️  No Web.config files found under $dest"
+                    Write-Warning "No Web.config files found under $dest"
                     exit 0
                 }
 
                 foreach ($file in $configs) {
-                    Write-Host "──────────────────────────────────────────"
-                    Write-Host "🔍  Processing: $($file.FullName)"
+                    Write-Host "Processing: $($file.FullName)"
 
-                    [xml]$xml = Get-Content $file.FullName -Raw
-                    $ns = $xml.configuration.'system.webServer'.httpProtocol.customHeaders
-
-                    if ($null -eq $ns) {
-                        Write-Host "    ℹ️  No httpProtocol/customHeaders section found — skipping."
-                        continue
-                    }
+                    # Read raw bytes and detect encoding to avoid altering line endings
+                    $bytes   = [System.IO.File]::ReadAllBytes($file.FullName)
+                    $enc     = [System.Text.UTF8Encoding]::new($false)
+                    $content = $enc.GetString($bytes)
 
                     $fileChanged = 0
-
-                    # Work on raw text so we preserve formatting and catch all attribute values
-                    $content = Get-Content $file.FullName -Raw
-                    $originalContent = $content
 
                     foreach ($old in $oldUrls) {
                         $occurrences = ([regex]::Matches($content, [regex]::Escape($old))).Count
                         if ($occurrences -gt 0) {
-                            Write-Host "    🔄  Found $occurrences occurrence(s) of: $old"
-                            Write-Host "        → Replacing with: $newUrl"
-                            $content = $content -replace [regex]::Escape($old), $newUrl
+                            Write-Host "  Replacing $occurrences occurrence(s) of: $old"
+                            $content     = $content -replace [regex]::Escape($old), $newUrl
                             $fileChanged += $occurrences
-                        } else {
-                            Write-Host "    ✔️  URL not present (nothing to replace): $old"
                         }
                     }
 
                     if ($fileChanged -gt 0) {
-                        Set-Content -Path $file.FullName -Value $content -NoNewline
-                        Write-Host "    💾  Saved $fileChanged replacement(s) to: $($file.FullName)"
+                        # Write back using the same encoding, no BOM, preserving original line endings
+                        [System.IO.File]::WriteAllBytes($file.FullName, $enc.GetBytes($content))
+                        Write-Host "  Saved $fileChanged replacement(s)"
                         $totalFiles++
                         $totalChanges += $fileChanged
                     } else {
-                        Write-Host "    ℹ️  No matching URLs found in customHeaders — file unchanged."
+                        Write-Host "  No matching URLs found — file unchanged"
                     }
                 }
 
                 Write-Host ""
-                Write-Host "══════════════════════════════════════════"
-                Write-Host "✅  PATCH COMPLETE"
-                Write-Host "    Web.config files modified : $totalFiles"
-                Write-Host "    Total URL replacements    : $totalChanges"
-                Write-Host "    Old URLs replaced         : $($oldUrls -join ', ')"
-                Write-Host "    New URL applied           : $newUrl"
-                Write-Host "══════════════════════════════════════════"
+                Write-Host "PATCH COMPLETE"
+                Write-Host "  Web.config files modified : $totalFiles"
+                Write-Host "  Total URL replacements    : $totalChanges"
+                Write-Host "  New URL applied           : $newUrl"
 
-                # ── Verification: print the patched customHeaders block ──
+                # Verification: print the patched customHeaders block
                 Write-Host ""
-                Write-Host "📋  POST-PATCH VERIFICATION — customHeaders contents:"
+                Write-Host "POST-PATCH VERIFICATION - customHeaders contents:"
                 foreach ($file in $configs) {
-                    $patched = Get-Content $file.FullName -Raw
-                    # Extract and print just the customHeaders block for a clean log
-                    $match = [regex]::Match($patched, '(?s)<customHeaders>.*?</customHeaders>')
+                    $patched = [System.IO.File]::ReadAllText($file.FullName)
+                    $match   = [regex]::Match($patched, '(?s)<customHeaders>.*?</customHeaders>')
                     if ($match.Success) {
                         Write-Host ""
-                        Write-Host "  File: $($file.FullName)"
+                        Write-Host "File: $($file.FullName)"
                         Write-Host $match.Value
                     }
                 }
