@@ -137,6 +137,30 @@ stages:
                 Write-Host "Re-zipped to: $dest"
                 Write-Host "Size: $([math]::Round($size, 2)) MB"
 
+          # ── 8. Ensure Azure CLI is installed ─────────────────────────────
+          - task: PowerShell@2
+            displayName: 'Ensure Azure CLI is installed'
+            inputs:
+              targetType: inline
+              script: |
+                $az = Get-Command az -ErrorAction SilentlyContinue
+                if ($az) {
+                    Write-Host "Azure CLI already installed at: $($az.Source)"
+                    az --version
+                } else {
+                    Write-Host "Azure CLI not found. Installing..."
+                    $installer = "$env:TEMP\AzureCLI.msi"
+                    Invoke-WebRequest -Uri 'https://aka.ms/installazurecliwindows' -OutFile $installer
+                    Start-Process msiexec.exe -Wait -ArgumentList "/I $installer /quiet /norestart"
+                    Remove-Item $installer -Force
+
+                    # Reload PATH so az is available in subsequent steps
+                    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+
+                    Write-Host "Azure CLI installed successfully."
+                    az --version
+                }
+
           # ── Re-publish extracted files as a new artifact ──────────────
           #- task: PublishPipelineArtifact@1
            # displayName: 'Publish extracted SaludPortal as artifact'
