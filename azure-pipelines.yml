@@ -14,6 +14,7 @@ variables:
   - group: SVNCredentials
   - group: TestTrunkVariables
   - group: Azure Connection
+  - group: PortalDeployment
 
   - name: ARTIFACT_NAME
     value: drop
