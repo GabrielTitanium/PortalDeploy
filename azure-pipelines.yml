@@ -55,7 +55,9 @@ stages:
             displayName: 'Download drop artifact from Build pipeline'
             inputs:
               buildType: current              # Pull from a specific pipeline run
-              artifactName: '$(ARTIFACT_NAME)'
+              project: 'Titanium'
+              definition: 'DVOP_PatientPortal'
+              artifactName: 'drop'
               targetPath: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)'
 
           # ── 2. Confirm the zip is present before extraction ──────────────
