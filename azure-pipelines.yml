@@ -54,11 +54,7 @@ stages:
           - task: DownloadPipelineArtifact@2
             displayName: 'Download drop artifact from Build pipeline'
             inputs:
-              buildType: specific              # Pull from a specific pipeline run
-              project: '$(System.TeamProjectId)'
-              definition: '$(resources.pipeline.BuildPipeline.pipelineID)'
-              buildVersionToDownload: latestFromBranch
-              branchName: '$(Build.SourceBranch)'
+              buildType: current              # Pull from a specific pipeline run
               artifactName: '$(ARTIFACT_NAME)'
               targetPath: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)'
 
