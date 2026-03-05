@@ -43,20 +43,22 @@ stages:
 
         steps:
 
-          # ── 1. Download the drop artifact (latest build on branch 104.112) ──
-          - task: DownloadBuildArtifacts@0
+          # ── 1. Download the drop artifact ────────────────────────────────
+          # The build pipeline publishes via PublishPipelineArtifact@1 which
+          # produces a "PipelineArtifact" type. DownloadBuildArtifacts@0 cannot
+          # handle this type ("Unsupported artifact type: PipelineArtifact").
+          # DownloadPipelineArtifact@2 must be used instead.
+          # Definition ID 453 = DVOP_PatientPortal (resolved from pipeline logs).
+          - task: DownloadPipelineArtifact@2
             displayName: 'Download drop artifact from DVOP_PatientPortal'
             inputs:
               buildType: 'specific'
               project: 'Titanium'
-              definition: 'DVOP_PatientPortal'
+              definition: '453'
               buildVersionToDownload: 'latestFromBranch'
               branchName: 'refs/heads/104.112'
-              downloadType: 'single'
               artifactName: 'drop'
-              itemPattern: 'drop/SaludPortal.zip'
-              downloadPath: '$(Pipeline.Workspace)'
-              failOnStderr: true
+              targetPath: '$(Pipeline.Workspace)\drop'
 
           # ── 2. Confirm the zip is present before extraction ──────────────
           - task: PowerShell@2
@@ -67,6 +69,8 @@ stages:
                 $zip = "$(Pipeline.Workspace)\drop\$(ZIP_FILE_NAME)"
                 if (-not (Test-Path $zip)) {
                     Write-Error "❌  $(ZIP_FILE_NAME) was NOT found at: $zip"
+                    Write-Host "Contents of drop folder:"
+                    Get-ChildItem "$(Pipeline.Workspace)\drop" -Recurse | Select-Object FullName
                     exit 1
                 }
                 Write-Host "✅  $(ZIP_FILE_NAME) found at: $zip"
