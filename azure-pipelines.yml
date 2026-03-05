@@ -1,17 +1,13 @@
 trigger: none
 
-# ──────────────────────────────────────────────
-# Trigger this pipeline whenever the Build pipeline
-# completes successfully on any branch.
-# ──────────────────────────────────────────────
 resources:
   pipelines:
-    - pipeline: BuildPipeline          # Alias used to reference the artifact below
-      source: 'DVOP_PatientPortal'   # ← Replace with the exact name of your build pipeline in Azure DevOps
+    - pipeline: BuildPipeline
+      source: 'DVOP_PatientPortal'
       trigger:
         branches:
           include:
-            - '*'
+            - '104.112'
 
 variables:
   - group: Keylocker
@@ -34,9 +30,6 @@ pool:
 
 stages:
 
-  # ────────────────────────────────────────────
-  # Stage 1 – Download & Unzip
-  # ────────────────────────────────────────────
   - stage: UnzipArtifact
     displayName: 'Download & Unzip SaludPortal Artifact'
     isSkippable: false
@@ -50,15 +43,20 @@ stages:
 
         steps:
 
-          # ── 1. Download the published pipeline artifact ──────────────────
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download drop artifact from Build pipeline'
+          # ── 1. Download the drop artifact (latest build on branch 104.112) ──
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download drop artifact from DVOP_PatientPortal'
             inputs:
-              buildType: current              # Pull from a specific pipeline run
+              buildType: 'specific'
               project: 'Titanium'
               definition: 'DVOP_PatientPortal'
+              buildVersionToDownload: 'latestFromBranch'
+              branchName: 'refs/heads/104.112'
+              downloadType: 'single'
               artifactName: 'drop'
-              targetPath: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)'
+              itemPattern: 'drop/SaludPortal.zip'
+              downloadPath: '$(Pipeline.Workspace)'
+              failOnStderr: true
 
           # ── 2. Confirm the zip is present before extraction ──────────────
           - task: PowerShell@2
@@ -66,7 +64,7 @@ stages:
             inputs:
               targetType: inline
               script: |
-                $zip = "$(Pipeline.Workspace)\$(ARTIFACT_NAME)\$(ZIP_FILE_NAME)"
+                $zip = "$(Pipeline.Workspace)\drop\$(ZIP_FILE_NAME)"
                 if (-not (Test-Path $zip)) {
                     Write-Error "❌  $(ZIP_FILE_NAME) was NOT found at: $zip"
                     exit 1
@@ -93,11 +91,11 @@ stages:
           - task: ExtractFiles@1
             displayName: 'Unzip SaludPortal.zip'
             inputs:
-              archiveFilePatterns: '$(Pipeline.Workspace)\$(ARTIFACT_NAME)\$(ZIP_FILE_NAME)'
+              archiveFilePatterns: '$(Pipeline.Workspace)\drop\$(ZIP_FILE_NAME)'
               destinationFolder: '$(UNZIP_DESTINATION)'
-              cleanDestinationFolder: false   # Already cleaned in the previous step
+              cleanDestinationFolder: false
 
-          # ── 5. Sanity-check the extracted contents ───────────────────────
+          # ── 5. List extracted contents ───────────────────────────────────
           - task: PowerShell@2
             displayName: 'List extracted contents'
             inputs:
@@ -107,7 +105,7 @@ stages:
                 Write-Host "📂  Extracted contents of $dest :"
                 Get-ChildItem -Path $dest -Recurse | Select-Object FullName | Format-Table -AutoSize
 
-          # ── 6. (Optional) Re-publish extracted files as a new artifact ───
+          # ── 6. Re-publish extracted files as a new artifact ──────────────
           - task: PublishPipelineArtifact@1
             displayName: 'Publish extracted SaludPortal as artifact'
             inputs:
